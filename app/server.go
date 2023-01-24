@@ -23,11 +23,14 @@ func respConversion (res, category string) string{
 
 func handleConn(conn net.Conn) {
 	req := make([]byte, 1024)
-	_, err := conn.Read(req)
-	if err != nil {
-		fmt.Println("error reading from incoming stream", err)
+	for {
+		_, err := conn.Read(req)
+		if err != nil {
+			fmt.Println("error reading from incoming stream", err)
+			break
+		}
+		conn.Write([]byte(respConversion("PONG", "string")))
 	}
-	conn.Write([]byte(respConversion("PONG", "string")))
 	conn.Close()
 }
 
