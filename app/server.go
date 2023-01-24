@@ -6,6 +6,33 @@ import (
 	"os"
 )
 
+const (
+	STRING_PREFIX = "+"
+	CRLF = "\r\n"
+)
+
+func respConversion (res, category string) string{
+	switch category {
+	case "string":
+		return STRING_PREFIX+res+CRLF
+	default:
+		return STRING_PREFIX+res+CRLF
+	}
+}
+
+
+func handleConn(conn net.Conn) {
+	req := make([]byte, 1024)
+	_, err := conn.Read(req)
+	if err != nil {
+		fmt.Println("error reading from incoming stream", err)
+	}
+	conn.Write([]byte(respConversion("PONG", "string")))
+	conn.Close()
+}
+
+
+
 func main() {
 	// You can use print statements as follows for debugging, they'll be visible when running tests.
 	fmt.Println("Logs from your program will appear here!")
@@ -15,9 +42,13 @@ func main() {
 		fmt.Println("Failed to bind to port 6379", err)
 		os.Exit(1)
 	}
-	_, err = l.Accept()
-	if err != nil {
-		fmt.Println("Error accepting connection: ", err.Error())
-		os.Exit(1)
+	for {
+		conn, err := l.Accept()
+		if err != nil {
+			fmt.Println("Error accepting connection: ", err.Error())
+			os.Exit(1)
+		}
+		go handleConn(conn)
 	}
+
 }
