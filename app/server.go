@@ -46,6 +46,7 @@ func main() {
 		os.Exit(1)
 	}
 	for {
+		// listening for all incomming connection ...
 		conn, err := l.Accept()
 		if err != nil {
 			fmt.Println("Error accepting connection: ", err.Error())
