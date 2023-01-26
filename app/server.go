@@ -2,12 +2,14 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"fmt"
 	"io"
 	"net"
 	"os"
 	"strconv"
 	"strings"
+	"sync"
 )
 
 const (
@@ -20,6 +22,9 @@ const (
 	STRING_PREFIX = "+"
 	CRLF          = "\r\n"
 )
+
+var mu sync.RWMutex
+var datastore = map[string]string{}
 
 func encode(resp string) string {
 	return fmt.Sprintf("%s%s%s", STRING_PREFIX, resp, CRLF)
@@ -65,7 +70,7 @@ func decodeBulkString(r *bufio.Reader) ([]string, error) {
 	if err != nil && err != io.EOF {
 		return nil, err 
 	}
-	return []string{string(buf)}, nil 
+	return []string{string(bytes.TrimSpace(buf))}, nil 
 }
 
 func decodeArray(r *bufio.Reader) ([]string, error) {
@@ -109,18 +114,44 @@ func handleConn(conn net.Conn) {
 		}
 		if len(cmds) >= 1 {
 			cmd := strings.ToUpper(cmds[0])
-			fmt.Printf("cmd %s type: %T\n", cmd, cmd)
-			switch cmd{
+			switch string(cmd){
 			case "PING":
 				conn.Write([]byte(encode("PONG")))
 			case "ECHO":
 				conn.Write([]byte(encode(cmds[1])))
+			case "SET":
+				fmt.Println(" Set command key and values: ", cmds[1:])
+				set(cmds[1], cmds[2])
+				conn.Write([]byte(encode("OK")))
+			case "GET":
+				fmt.Println("Get Command key and values: ", cmds[1:])
+				val, _ := get(cmds[1])
+				conn.Write([]byte(encode(val)))
 			default:
 				conn.Write([]byte(encode("PONG")))
 			}
 		}
 	}
 }
+
+// datastore related functions
+func set(key, val string) error {
+	mu.Lock()
+	{
+		datastore[key] = val
+	}
+	mu.Unlock()
+	return nil 
+}
+
+func get(key string) (string, error) {
+	mu.RLock()
+	val := datastore[key]
+	mu.RUnlock()
+	return val, nil 
+}
+
+
 
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
