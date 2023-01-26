@@ -10,17 +10,18 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 )
 
 const (
 	// Decoding ...
-	ARRAY byte = '*'
+	ARRAY       byte = '*'
 	BULK_STRING byte = '$'
-	STRING byte = '+'
-
+	STRING      byte = '+'
 	// Encoding ...
 	STRING_PREFIX = "+"
 	CRLF          = "\r\n"
+	EMPTY 		  = "$-1"
 )
 
 var mu sync.RWMutex
@@ -30,11 +31,14 @@ func encode(resp string) string {
 	return fmt.Sprintf("%s%s%s", STRING_PREFIX, resp, CRLF)
 }
 
+func encodeNonEmptyResponse() string {
+	return fmt.Sprintf("%s%s", EMPTY, CRLF)
+}
 
 func decode(r *bufio.Reader) ([]string, error) {
 	b, err := r.ReadByte()
 	if err != nil {
-		return nil, err  
+		return nil, err
 	}
 	switch b {
 	case ARRAY:
@@ -53,24 +57,24 @@ func decodeString(r *bufio.Reader) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	return []string{string(barr)}, nil 
+	return []string{string(barr)}, nil
 }
 
 func decodeBulkString(r *bufio.Reader) ([]string, error) {
 	barr, err := validByteCount(r)
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
-	count, err:= strconv.Atoi(string(barr))
+	count, err := strconv.Atoi(string(barr))
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 	buf := make([]byte, count+2)
 	_, err = io.ReadFull(r, buf)
 	if err != nil && err != io.EOF {
-		return nil, err 
+		return nil, err
 	}
-	return []string{string(bytes.TrimSpace(buf))}, nil 
+	return []string{string(bytes.TrimSpace(buf))}, nil
 }
 
 func decodeArray(r *bufio.Reader) ([]string, error) {
@@ -78,30 +82,30 @@ func decodeArray(r *bufio.Reader) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	count, err:= strconv.Atoi(string(byteCounts))
+	count, err := strconv.Atoi(string(byteCounts))
 	if err != nil {
-		return nil, err 
+		return nil, err
 	}
 	vals := []string{}
-	for i:=0; i<count; i++ {
+	for i := 0; i < count; i++ {
 		current, err := decode(r)
 		if err == io.EOF {
 			return vals, nil
 		}
 		if err != nil {
-			return nil, err 
+			return nil, err
 		}
 		vals = append(vals, current...)
 	}
-	return vals, nil  
+	return vals, nil
 }
 
 func validByteCount(r *bufio.Reader) ([]byte, error) {
 	barr, err := r.ReadBytes('\n')
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
-	return barr[:len(barr)-2], nil 
+	return barr[:len(barr)-2], nil
 }
 
 func handleConn(conn net.Conn) {
@@ -114,18 +118,20 @@ func handleConn(conn net.Conn) {
 		}
 		if len(cmds) >= 1 {
 			cmd := strings.ToUpper(cmds[0])
-			switch string(cmd){
+			switch string(cmd) {
 			case "PING":
 				conn.Write([]byte(encode("PONG")))
 			case "ECHO":
 				conn.Write([]byte(encode(cmds[1])))
 			case "SET":
-				fmt.Println(" Set command key and values: ", cmds[1:])
-				set(cmds[1], cmds[2])
+				set(cmds[1:]...)
 				conn.Write([]byte(encode("OK")))
 			case "GET":
-				fmt.Println("Get Command key and values: ", cmds[1:])
-				val, _ := get(cmds[1])
+				val, nonempty:= get(cmds[1])
+				if !nonempty {
+					conn.Write([]byte(encodeNonEmptyResponse()))
+					break
+				}
 				conn.Write([]byte(encode(val)))
 			default:
 				conn.Write([]byte(encode("PONG")))
@@ -134,24 +140,36 @@ func handleConn(conn net.Conn) {
 	}
 }
 
-// datastore related functions
-func set(key, val string) error {
+func expire(key string, ttm time.Duration) {
+	tick := time.NewTicker(ttm)
+	<-tick.C
 	mu.Lock()
-	{
-		datastore[key] = val
-	}
+	delete(datastore, key)
 	mu.Unlock()
-	return nil 
+	tick.Stop()
 }
 
-func get(key string) (string, error) {
+// datastore related functions
+func set(keys... string) error {
+	fmt.Println("keys: ", keys)
+	if len(keys) >= 2 {
+		mu.Lock()
+		datastore[keys[0]] = keys[1]
+		mu.Unlock()
+		if len(keys) == 4 {
+			ttm, _ := strconv.Atoi(keys[3])
+			go expire(keys[0],time.Duration(1000*ttm))
+		}
+	}
+	return fmt.Errorf("invalid args ...")
+}
+
+func get(key string) (string, bool) {
 	mu.RLock()
-	val := datastore[key]
-	mu.RUnlock()
-	return val, nil 
+	defer mu.RUnlock()
+	val, OK:= datastore[key]
+	return val, OK
 }
-
-
 
 func main() {
 	l, err := net.Listen("tcp", "0.0.0.0:6379")
@@ -170,4 +188,3 @@ func main() {
 	}
 
 }
-
