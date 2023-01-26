@@ -21,9 +21,10 @@ const (
 	CRLF          = "\r\n"
 )
 
-func encode(res string) string {
-	return fmt.Sprintf("%s%s%s", STRING_PREFIX, res, CRLF)
+func encode(resp string) string {
+	return fmt.Sprintf("%s%s%s", STRING_PREFIX, resp, CRLF)
 }
+
 
 func decode(r *bufio.Reader) ([]string, error) {
 	b, err := r.ReadByte()
@@ -103,17 +104,19 @@ func handleConn(conn net.Conn) {
 	for {
 		r := bufio.NewReader(conn)
 		cmds, err := decode(r)
-		if err != nil {
-			conn.Write([]byte(encode("invaid request")))
+		if err == io.EOF {
+			break
 		}
 		if len(cmds) >= 1 {
 			cmd := strings.ToUpper(cmds[0])
-			fmt.Printf("fucking command: %s type :%T", cmd, cmd)
-			switch  {
-			case cmd == "PING":
+			fmt.Printf("cmd %s type: %T\n", cmd, cmd)
+			switch cmd{
+			case "PING":
 				conn.Write([]byte(encode("PONG")))
-			case cmd == "ECHO":
+			case "ECHO":
 				conn.Write([]byte(encode(cmds[1])))
+			default:
+				conn.Write([]byte(encode("PONG")))
 			}
 		}
 	}
@@ -137,4 +140,3 @@ func main() {
 
 }
 
-// *2\r\n$4\r\nECHO\r\n$3\r\nhey\r\n
