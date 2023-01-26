@@ -21,7 +21,7 @@ const (
 	// Encoding ...
 	STRING_PREFIX = "+"
 	CRLF          = "\r\n"
-	EMPTY 		  = "$-1"
+	EMPTY         = "$-1"
 )
 
 var mu sync.RWMutex
@@ -127,7 +127,7 @@ func handleConn(conn net.Conn) {
 				set(cmds[1:]...)
 				conn.Write([]byte(encode("OK")))
 			case "GET":
-				val, nonempty:= get(cmds[1])
+				val, nonempty := get(cmds[1])
 				if !nonempty {
 					conn.Write([]byte(encodeNonEmptyResponse()))
 					break
@@ -150,7 +150,7 @@ func expire(key string, ttm time.Duration) {
 }
 
 // datastore related functions
-func set(keys... string) error {
+func set(keys ...string) error {
 	fmt.Println("keys: ", keys)
 	if len(keys) >= 2 {
 		mu.Lock()
@@ -158,7 +158,7 @@ func set(keys... string) error {
 		mu.Unlock()
 		if len(keys) == 4 {
 			ttm, _ := strconv.Atoi(keys[3])
-			go expire(keys[0],time.Duration(1000*ttm))
+			go expire(keys[0], time.Duration(1000*ttm))
 		}
 	}
 	return fmt.Errorf("invalid args ...")
@@ -167,7 +167,7 @@ func set(keys... string) error {
 func get(key string) (string, bool) {
 	mu.RLock()
 	defer mu.RUnlock()
-	val, OK:= datastore[key]
+	val, OK := datastore[key]
 	return val, OK
 }
 
